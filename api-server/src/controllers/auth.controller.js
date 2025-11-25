@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import { generateToken } from "../config/jwt.js";
-import { generateKeyPair } from "../services/blockchain.service.js";
+import blockchainService from "../services/blockchain.service.js";
 import { encrypt } from "../utils/crypto.js";
 
 export async function register(req, res) {
@@ -14,15 +14,15 @@ export async function register(req, res) {
     const hashed = await bcrypt.hash(password, 10);
 
     // generate blockchain keypair
-    const { pub, priv } = generateKeyPair();
-    const privEnc = encrypt(priv);
+    const { publicKey, privateKey } = blockchainService.generateKeyPair();
+    const privEnc = encrypt(privateKey);
 
     const user = await User.create({
       name,
       email,
       password: hashed,
       role: role || "user",
-      blockchainPublicKey: pub,
+      blockchainPublicKey: publicKey,
       blockchainPrivateKeyEnc: privEnc
     });
 

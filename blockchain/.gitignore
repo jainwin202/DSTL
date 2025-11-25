@@ -1,0 +1,6 @@
+# Ignore blockchain data folders
+blockchain/.data-*/
+.data-node-1/
+*.log
+node_modules/
+.env

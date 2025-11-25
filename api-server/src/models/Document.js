@@ -5,7 +5,10 @@ const docSchema = new mongoose.Schema({
   issuer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   metadata: { type: Object },
-  filename: String,
+  status: { type: String, enum: ['active', 'revoked'], default: 'active' },
+  // CRITICAL FIX: Changed 'filename' to 'filePath' to match what is being saved
+  // in the issuer.controller.js. This ensures the file path is correctly stored.
+  filePath: String,
   createdAt: { type: Date, default: Date.now }
 });
 

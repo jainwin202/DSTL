@@ -51,17 +51,19 @@ export class Blockchain {
   }
 
   addTransaction(tx) {
-    if (!tx.isValid()) throw new Error("Invalid transaction");
+    // Pass the augmented state to isValid so it can validate all tx types
+    if (!tx.isValid(this.getAugmentedState())) throw new Error("Invalid transaction");
     this.pendingTxs.push(tx);
   }
 
   async proposeBlock(validatorPrivKey) {
+    // CRITICAL FIX: The validator's private key must be passed to signBlock.
     const block = new Block({
       index: this.chain.length,
       prevHash: this.lastBlock().hash,
       transactions: this.pendingTxs,
       validatorPubKey: this.validatorPubKey
-    }).signBlock(validatorPrivKey);
+    }).signBlock(validatorPrivKey); // Pass the key here.
 
     if (!block.isValid(this.lastBlock().hash, this.allowedValidators)) {
       throw new Error("Block validation failed");
@@ -100,6 +102,41 @@ export class Blockchain {
           if (state[docId]) state[docId].revoked = true;
         }
       }
+    }
+    return state;
+  }
+
+  getAugmentedState() {
+    // Start with the confirmed state from the blocks
+    const state = this.getState();
+
+    // Now, apply pending transactions on top of that state
+    for (const tx of this.pendingTxs) {
+        const { type, payload, issuerPubKey } = tx;
+        if (type === "ISSUE") {
+          const { docId, docHash, ownerPubKey, metadata } = payload;
+          // Add the document to the state if it's not already there from a mined block
+          if (!state[docId]) {
+            state[docId] = { issuer: issuerPubKey, owner: ownerPubKey, hash: docHash, revoked: false, shares: [], metadata };
+          }
+        }
+        if (type === "SHARE") {
+          const { docId, to } = payload;
+          // Add a share if the doc exists and is not revoked
+          if (state[docId] && !state[docId].revoked) {
+            // Avoid duplicate shares if the tx is already in a block
+            if (!state[docId].shares.includes(to)) {
+                state[docId].shares.push(to);
+            }
+          }
+        }
+        if (type === "REVOKE") {
+          const { docId } = payload;
+          // Revoke if the doc exists
+          if (state[docId]) {
+            state[docId].revoked = true;
+          }
+        }
     }
     return state;
   }

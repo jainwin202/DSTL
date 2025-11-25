@@ -9,20 +9,38 @@ export default function UploadDoc() {
     const [file, setFile] = useState(null);
     const [ownerId, setOwnerId] = useState("");
     const [metadata, setMetadata] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
     async function handleSubmit(e) {
         e.preventDefault();
-        const form = new FormData();
-        form.append("file", file);
-        form.append("ownerId", ownerId);
-        form.append("metadata", metadata);
+        setLoading(true);
+        setError("");
 
-        const res = await api.post("/issuer/upload", form, {
-            headers: { "Content-Type": "multipart/form-data" }
-        });
+        try {
+            // Validate that metadata is valid JSON before sending
+            JSON.parse(metadata);
 
-        alert("Uploaded + issued to blockchain!");
-        navigate(`/docs/${res.data.docId}`);
+            const form = new FormData();
+            form.append("file", file);
+            form.append("ownerId", ownerId);
+            form.append("metadata", metadata);
+
+            const res = await api.post("/issuer/upload", form, {
+                headers: { "Content-Type": "multipart/form-data" }
+            });
+
+            alert("Uploaded + issued to blockchain!");
+            navigate(`/docs/${res.data.docId}`);
+        } catch (err) {
+            if (err instanceof SyntaxError) {
+                setError("Metadata is not valid JSON. Please check the format.");
+            } else {
+                setError(err.response?.data?.error || "An error occurred during upload.");
+            }
+        } finally {
+            setLoading(false);
+        }
     }
 
     return (
@@ -36,7 +54,10 @@ export default function UploadDoc() {
 
                 <textarea className="w-full p-2 border rounded" placeholder='Metadata JSON e.g. {"title":"B.Tech Degree"}' value={metadata} onChange={(e) => setMetadata(e.target.value)} required />
 
-                <button className="w-full bg-blue-600 text-white py-2 rounded">Upload & Issue</button>
+                <button className="w-full bg-blue-600 text-white py-2 rounded disabled:bg-gray-400" disabled={loading}>
+                    {loading ? "Uploading..." : "Upload & Issue"}
+                </button>
+                {error && <p className="text-red-600 text-sm">{error}</p>}
             </form>
 
             <p className="mt-4 text-sm text-gray-600">

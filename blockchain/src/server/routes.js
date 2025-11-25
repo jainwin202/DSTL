@@ -33,8 +33,8 @@ export function buildRouter({ chain, p2p, validator }) {
 
       const tx = new Transaction({ type, payload, issuerPubKey, signature });
 
-      if (!tx.isValid()) {
-        console.error('Invalid transaction signature');
+      if (!tx.isValid(chain.getAugmentedState())) {
+        console.error('Invalid transaction signature for ISSUE');
         return res.status(400).json({ ok: false, error: "Invalid transaction signature" });
       }
 
@@ -52,13 +52,14 @@ export function buildRouter({ chain, p2p, validator }) {
   // ---- SHARE TX ----
   r.post("/tx/share", async (req, res) => {
     try {
-      const { docId, to, issuerPubKey, issuerPrivKey } = req.body;
+      const { type, payload, issuerPubKey, signature } = req.body;
 
-      const tx = new Transaction({
-        type: "SHARE",
-        payload: { docId, to },
-        issuerPubKey
-      }).sign(issuerPrivKey);
+      const tx = new Transaction({ type, payload, issuerPubKey, signature });
+
+      if (!tx.isValid(chain.getAugmentedState())) {
+        console.error('Invalid transaction signature for SHARE');
+        return res.status(400).json({ ok: false, error: "Invalid transaction signature" });
+      }
 
       chain.addTransaction(tx);
       p2p.broadcastTx(tx);
@@ -72,13 +73,14 @@ export function buildRouter({ chain, p2p, validator }) {
   // ---- REVOKE TX ----
   r.post("/tx/revoke", async (req, res) => {
     try {
-      const { docId, issuerPubKey, issuerPrivKey } = req.body;
+      const { type, payload, issuerPubKey, signature } = req.body;
 
-      const tx = new Transaction({
-        type: "REVOKE",
-        payload: { docId },
-        issuerPubKey
-      }).sign(issuerPrivKey);
+      const tx = new Transaction({ type, payload, issuerPubKey, signature });
+
+      if (!tx.isValid(chain.getAugmentedState())) {
+        console.error('Invalid transaction signature for REVOKE');
+        return res.status(400).json({ ok: false, error: "Invalid transaction signature" });
+      }
 
       chain.addTransaction(tx);
       p2p.broadcastTx(tx);

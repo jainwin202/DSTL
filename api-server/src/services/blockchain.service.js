@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 const BLOCKCHAIN_API = process.env.BLOCKCHAIN_API || "http://localhost:3001/api";
 
-export function generateKeyPair() {
+function generateKeyPair() {
     // Generate proper EC keys for secp256k1
     const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", {
         namedCurve: "secp256k1",
@@ -25,30 +25,27 @@ async function getState() {
 }
 
 function signTransaction(data, privateKey) {
-    // Make sure to use a new Sign instance
-    const sign = crypto.createSign('SHA256');
-    sign.write(data);
-    sign.end();
-    return sign.sign(privateKey, 'base64');
+    if (!privateKey) {
+        throw new Error('No key provided to sign');
+    }
+    // DEFINITIVE FIX: Use the one-shot crypto.sign method.
+    // This bypasses the multi-step createSign -> update -> sign flow that is causing the error.
+    // It takes the algorithm, data, and key, and returns the signature directly.
+    return crypto.sign('sha256', Buffer.from(data), privateKey).toString('base64');
 }
 
 async function issueDoc(docId, hash, ownerPubKey, issuerPrivKey) {
     try {
         console.log('Issuing document:', { docId, hash });
         
-        // Generate a new key pair if ownerPubKey is not provided or invalid
         if (!ownerPubKey || !ownerPubKey.includes("BEGIN PUBLIC KEY")) {
-            console.log('Generating new key pair for owner');
-            const keyPair = generateKeyPair();
-            ownerPubKey = keyPair.publicKey;
-            // Note: In a real system, you'd want to securely store/transmit the private key
+            throw new Error("A valid owner public key was not provided to issueDoc.");
         }
 
         if (!issuerPrivKey || !issuerPrivKey.includes("BEGIN PRIVATE KEY")) {
             throw new Error("Invalid issuer private key format - must be PEM");
         }
 
-        // Create transaction payload
         const tx = {
             type: "ISSUE",
             payload: {
@@ -60,42 +57,23 @@ async function issueDoc(docId, hash, ownerPubKey, issuerPrivKey) {
             issuerPubKey: crypto.createPublicKey(issuerPrivKey).export({
                 type: 'spki',
                 format: 'pem'
-            }) // Derive issuer public key from private key
+            })
         };
 
-        console.log('Creating transaction:', JSON.stringify(tx));
-
-        // Sign the transaction data
-        const signature = signTransaction(
-            JSON.stringify(tx),
-            issuerPrivKey
-        );
-
-        console.log('Sending request to blockchain:', { 
-            url: `${BLOCKCHAIN_API}/tx/issue`,
-            docId,
-            hasKeys: {
-                ownerPubKey: !!ownerPubKey,
-                signature: !!signature
-            }
-        });
+        const signature = signTransaction(JSON.stringify(tx), issuerPrivKey);
 
         const res = await axios.post(`${BLOCKCHAIN_API}/tx/issue`, {
             ...tx,
             signature
         }, {
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         });
-        
-        console.log('Blockchain response:', res.data);
         
         if (!res.data.ok) {
             throw new Error(res.data.error || 'Blockchain transaction failed');
         }
         
-        return { ...res.data, ownerPubKey }; // Return the generated public key if we created one
+        return { ...res.data, ownerPubKey };
     } catch (err) {
         console.error('Blockchain Error:', {
             message: err.message,
@@ -106,21 +84,56 @@ async function issueDoc(docId, hash, ownerPubKey, issuerPrivKey) {
     }
 }
 
-async function shareDoc(docId, targetPubKey) {
-    const res = await axios.post(`${BLOCKCHAIN_API}/tx`, {
-        type: "SHARE",
-        docId,
-        targetPubKey
-    });
-    return res.data;
+async function shareDoc(docId, targetPubKey, issuerPrivKey) {
+    try {
+        const issuerPubKey = crypto.createPublicKey(issuerPrivKey).export({ type: 'spki', format: 'pem' });
+        const tx = {
+            type: 'SHARE',
+            payload: { docId, to: targetPubKey },
+            issuerPubKey
+        };
+
+        const signature = signTransaction(JSON.stringify(tx), issuerPrivKey);
+
+        const res = await axios.post(`${BLOCKCHAIN_API}/tx/share`, {
+            ...tx,
+            signature
+        }, { headers: { 'Content-Type': 'application/json' } });
+
+        if (!res.data.ok) {
+            throw new Error(res.data.error || 'Share transaction failed');
+        }
+        return res.data;
+    } catch (err) {
+        console.error('shareDoc service error', err?.response?.data || err.message);
+        throw err;
+    }
 }
 
-async function revokeDoc(docId) {
-    const res = await axios.post(`${BLOCKCHAIN_API}/tx`, {
-        type: "REVOKE",
-        docId
-    });
-    return res.data;
+async function revokeDoc(docId, issuerPrivKey) {
+    try {
+        const issuerPubKey = crypto.createPublicKey(issuerPrivKey).export({ type: 'spki', format: 'pem' });
+        const tx = {
+            type: 'REVOKE',
+            payload: { docId },
+            issuerPubKey
+        };
+
+        const signature = signTransaction(JSON.stringify(tx), issuerPrivKey);
+
+        const res = await axios.post(`${BLOCKCHAIN_API}/tx/revoke`, {
+            ...tx,
+            signature
+        }, { headers: { 'Content-Type': 'application/json' } });
+
+        if (!res.data.ok) {
+            throw new Error(res.data.error || 'Revoke transaction failed');
+        }
+        return res.data;
+    } catch (err) {
+        console.error('revokeDoc service error', err?.response?.data || err.message);
+        throw err;
+    }
 }
 
 export default {
@@ -130,3 +143,5 @@ export default {
     shareDoc,
     revokeDoc
 };
+
+export { generateKeyPair };

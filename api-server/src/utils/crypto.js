@@ -18,11 +18,30 @@ export function encrypt(text) {
 }
 
 export function decrypt(hash) {
-  const [ivHex, contentHex] = String(hash).split(":");
-  if (!ivHex || !contentHex) throw new Error("Invalid encrypted payload");
-  const iv = Buffer.from(ivHex, "hex");
-  const content = Buffer.from(contentHex, "hex");
-  const key = getKey();
-  const decipher = crypto.createDecipheriv(ALGO, key, iv);
-  return Buffer.concat([decipher.update(content), decipher.final()]).toString("utf8");
+  // CRITICAL FIX: Wrap decryption in a try/catch block.
+  // If the hash is invalid, null, or decryption fails, this prevents a server crash
+  // and ensures the function returns null, which can be handled gracefully.
+  try {
+    if (!hash || typeof hash !== 'string' || !hash.includes(':')) {
+      console.error("Decrypt Error: Invalid or missing hash provided.");
+      return null;
+    }
+
+    const [ivHex, contentHex] = hash.split(":");
+    if (!ivHex || !contentHex) {
+        console.error("Decrypt Error: Incomplete encrypted payload.");
+        return null;
+    }
+
+    const iv = Buffer.from(ivHex, "hex");
+    const content = Buffer.from(contentHex, "hex");
+    const key = getKey();
+    const decipher = crypto.createDecipheriv(ALGO, key, iv);
+    
+    const decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch (error) {
+    console.error("An unexpected error occurred during decryption:", error.message);
+    return null;
+  }
 }

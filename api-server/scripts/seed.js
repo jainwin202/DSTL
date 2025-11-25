@@ -2,7 +2,7 @@ import "dotenv/config";
 import bcrypt from "bcrypt";
 import mongoose from "mongoose";
 import User from "../src/models/User.js";
-import { generateKeyPair } from "../src/services/blockchain.service.js";
+import blockchainService from "../src/services/blockchain.service.js";
 import { encrypt } from "../src/utils/crypto.js";
 
 async function seed() {
@@ -33,15 +33,18 @@ async function seed() {
     }
 
     const hashed = await bcrypt.hash(u.password, 10);
-    const { pub, priv } = generateKeyPair();
-    const privEnc = encrypt(priv);
+    
+    // CRITICAL FIX: Correctly destructure the keys from the generateKeyPair function.
+    // It returns { publicKey, privateKey }, not { pub, priv }.
+    const { publicKey, privateKey } = blockchainService.generateKeyPair();
+    const privEnc = encrypt(privateKey);
 
     await User.create({
       name: u.name,
       email: u.email,
       password: hashed,
       role: u.role,
-      blockchainPublicKey: pub,
+      blockchainPublicKey: publicKey,
       blockchainPrivateKeyEnc: privEnc
     });
 

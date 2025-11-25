@@ -1,15 +1,17 @@
 import { Router } from "express";
-import { requireAuth } from "../middleware/requireAuth.js";
-import { getMyDocs, getSingleDoc } from "../controllers/user.controller.js";
+import { getOwnedDocs, getSharedDocs, getSingleDoc } from "../controllers/user.controller.js";
 import { shareDoc, revokeDoc, downloadDoc } from "../controllers/user.actions.js";
 
-const r = Router();
-r.use(requireAuth);
+const router = Router();
 
-r.get("/docs", getMyDocs);
-r.get("/doc/:id", getSingleDoc);
-r.get("/download/:id", downloadDoc);
-r.post("/share", shareDoc);
-r.post("/revoke", revokeDoc);
+// Document viewing
+router.get("/owned-docs", getOwnedDocs);
+router.get("/shared-docs", getSharedDocs);
+router.get("/doc/:id", getSingleDoc);
+router.get("/download/:id", downloadDoc);
 
-export default r;
+// Document actions
+router.post("/share", shareDoc);
+router.post("/revoke", revokeDoc);
+
+export default router;

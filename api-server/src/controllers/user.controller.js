@@ -2,29 +2,61 @@ import Document from "../models/Document.js";
 import User from "../models/User.js";
 import blockchainService from "../services/blockchain.service.js";
 
-export async function getMyDocs(req, res) {
+/**
+ * Gets documents that the user either owns or has issued.
+ */
+export async function getOwnedDocs(req, res) {
   const userId = req.user._id;
   const role = req.user.role;
 
-  let docs;
+  const query = role === "issuer" ? { issuer: userId } : { owner: userId };
+  query.status = 'active'; // Only return active documents
 
-  if (role === "issuer") {
-    // Show docs issued by this institution
-    docs = await Document.find({ issuer: userId });
-  } else {
-    // Normal user: show owned docs
-    docs = await Document.find({ owner: userId });
-  }
+  const docs = await Document.find(query);
 
   const chainState = await blockchainService.getState();
-
   const merged = docs.map((d) => ({
     docId: d.docId,
     metadata: d.metadata,
-    // Prefer on-chain hash, fall back to stored file hash or stored tx hash
-    hash: (chainState[d.docId] && chainState[d.docId].hash) || d.hash || d.metadata?.txHash,
+    hash: (chainState[d.docId] && chainState[d.docId].hash) || d.hash,
     revoked: (chainState[d.docId] && chainState[d.docId].revoked) || false
   }));
+
+  res.json({ ok: true, docs: merged });
+}
+
+/**
+ * Gets documents that have been shared with the user.
+ */
+export async function getSharedDocs(req, res) {
+  const userPubKey = req.user.blockchainPublicKey;
+
+  const chainState = await blockchainService.getState();
+
+  const sharedDocIds = Object.keys(chainState).filter(docId => {
+    const entry = chainState[docId];
+    return entry.shares && entry.shares.includes(userPubKey);
+  });
+
+  if (sharedDocIds.length === 0) {
+    return res.json({ ok: true, docs: [] });
+  }
+
+  // Find only active documents that have been shared
+  const docs = await Document.find({ 
+    docId: { $in: sharedDocIds },
+    status: 'active' 
+  });
+
+  const merged = docs.map((d) => {
+    const chainEntry = chainState[d.docId];
+    return {
+      docId: d.docId,
+      metadata: d.metadata,
+      hash: chainEntry?.hash || d.hash,
+      revoked: chainEntry?.revoked || false
+    };
+  });
 
   res.json({ ok: true, docs: merged });
 }
@@ -41,9 +73,10 @@ export async function getSingleDoc(req, res) {
     ok: true,
     docId,
     metadata: doc.metadata,
+    status: doc.status, // Return the DB status ('active' or 'revoked')
     // Use on-chain value when available; otherwise fall back to stored values
     hash: (chainEntry && chainEntry.hash) || doc.hash || doc.metadata?.txHash,
-    revoked: (chainEntry && chainEntry.revoked) || false,
+    revoked: (chainEntry && chainEntry.revoked) || doc.status === 'revoked', // Combine DB and chain status
     issuer: doc.issuer,
     owner: doc.owner
   });
