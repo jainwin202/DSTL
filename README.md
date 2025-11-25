@@ -155,9 +155,289 @@ Security notes & caveats
 - Private keys are stored encrypted in the database for demo purposes; in production you must use secure key management (HSM, Vault, etc.).
 - This is an educational PoA blockchain, not production-grade: no consensus safety, no Byzantine tolerance, and no real token economics.
 
+## Detailed Workflow Documentation
+
+For a **comprehensive, deep-dive guide** covering:
+
+- Complete document lifecycle with actual code paths
+- User roles (issuer vs. user) and their permissions
+- Step-by-step end-to-end testing scenarios
+- Detailed API endpoint reference
+- MongoDB database queries
+- Troubleshooting and debugging tips
+- Network request inspection with real examples
+
+**See `DETAILED_WORKFLOW.md`** in the repository root.
+
+This guide walks you through:
+
+1. System architecture and data models
+2. How issuer uploads → document ownership → blockchain issuance works
+3. How users view and interact with documents they own
+4. How sharing and revoking works end-to-end
+5. Public verification without authentication
+6. Complete testing scenarios with expected outputs
+
 Further reading & next steps
 
 - Add automated block proposals or a small scheduler for regular block creation if you want continuous finalization.
 - Add richer auditing endpoints and block explorers for better observability.
 
 ---
+
+Here is the complete, formatted `README.md` file. I have cleaned up the absolute file paths (e.g., `C:\Users...`) to use relative paths so that this README will work for anyone who clones your repository.
+
+You can copy and paste the block below directly into your `README.md` file.
+
+---
+
+````markdown
+# DSTL Project - Complete Run & Debug Guide
+
+## 🏗 Architecture Overview
+
+The DSTL project consists of 3 main components working together:
+
+1.  **Blockchain (Port 3001):** Private PoA (Proof of Authority) blockchain using LevelDB.
+2.  **API Server (Port 5000):** Express.js server with MongoDB for user management & authentication.
+3.  **Client (Vite dev server):** React frontend that connects to the API server.
+
+**Data Flow:** Client → API Server → Blockchain + MongoDB
+
+---
+
+## 🚀 Part 1: Fresh Blockchain Setup
+
+### Step 1.1: Drop Current Blockchain & Generate Keys
+
+The blockchain data is stored in `.data-*` directories. Run the following to start fresh and generate new validator keys.
+
+```powershell
+# Open Terminal in project root
+cd blockchain
+
+# Remove existing chain data (Windows PowerShell)
+Remove-Item -Recurse -Force .data-node-1 -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .data-3001 -ErrorAction SilentlyContinue
+
+# Generate new keys
+npm run genkeys
+```
+````
+
+---
+
+## 🔗 Part 2: Start the Blockchain
+
+### Step 2.1: Start Blockchain Node
+
+This initializes the Genesis block (if it doesn't exist) and starts the peer-to-peer node.
+
+```bash
+# In blockchain folder
+node src/server/index.js
+```
+
+**Expected Output:**
+
+```text
+Normalized validator keys loaded
+validator pub: { header: '-----BEGIN PUBLIC KEY-----', ... }
+validator priv: { header: '-----BEGIN PRIVATE KEY-----', ... }
+Creating genesis block...
+Genesis block created and saved
+Listening on port 3001
+```
+
+---
+
+## 🗄 Part 3: Start MongoDB & Seed Database
+
+### Step 3.1: Ensure MongoDB is Running
+
+```powershell
+# Windows Service
+net start MongoDB
+
+# OR if installed via Chocolatey/Direct
+mongod
+```
+
+### Step 3.2: Seed the Database
+
+Initialize the database with test users (Issuer and Standard User).
+
+```bash
+# In api-server folder
+cd api-server
+npm run seed
+```
+
+**Expected Output:**
+
+```text
+✅ Connected to MongoDB
+✅ Created: issuer@example.com (issuer)
+✅ Created: user@example.com (user)
+```
+
+---
+
+## 🌐 Part 4: Start the API Server
+
+### Step 4.1: Start API Server
+
+The server connects to both MongoDB and the Blockchain node.
+
+```bash
+# In api-server folder
+node src/server.js
+```
+
+**Expected Output:**
+
+```text
+✅ MongoDB connected
+API running on http://localhost:5000
+```
+
+---
+
+## 💻 Part 5: Start the Client
+
+### Step 5.1: Start Vite Dev Server
+
+```bash
+# In client folder
+cd client
+npm run dev
+```
+
+**Expected Output:**
+
+```text
+  ➜  Local:   http://localhost:5173/
+```
+
+---
+
+## ⚡ Quick Start Summary (Terminal Order)
+
+Open **4 separate terminals** and run the following commands in order:
+
+| Terminal | Component        | Command                                     | Port  |
+| :------- | :--------------- | :------------------------------------------ | :---- |
+| **1**    | Blockchain       | `cd blockchain && node src/server/index.js` | 3001  |
+| **2**    | API Server       | `cd api-server && node src/server.js`       | 5000  |
+| **3**    | Client           | `cd client && npm run dev`                  | 5173  |
+| **4**    | Mongo (Optional) | `mongod` (if not running as service)        | 27017 |
+
+---
+
+## 🧪 Part 6: Testing the Full Flow
+
+### 1\. Login & Issue a Document
+
+1.  Go to `http://localhost:5173/`
+2.  **Login** using: `issuer@example.com` / `issuer123`
+3.  Go to **Upload Document** and upload a file.
+    - _Backend:_ File saved to `uploads`, Metadata saved to MongoDB, `ISSUE` transaction sent to Blockchain.
+
+### 2\. View & Share
+
+1.  Go to **My Documents**.
+2.  Click a document to view details.
+3.  **Share** using another user's public key.
+    - _Backend:_ `SHARE` transaction recorded on Blockchain.
+
+### 3\. Public Verification
+
+1.  Get the `docId`.
+2.  Use the link: `http://localhost:5173/verify/<docId>`
+3.  Verifies existence on the blockchain without login.
+
+---
+
+## 🐞 Part 7: Debugging & Monitoring
+
+### Check Blockchain State (cURL)
+
+Run these commands in a separate terminal to inspect the chain directly.
+
+```bash
+# Get entire chain
+curl http://localhost:3001/api/chain
+
+# Get blockchain state (ownership info)
+curl http://localhost:3001/api/state
+
+# Get pending transactions
+curl http://localhost:3001/api/pending
+
+# Verify a specific document
+curl http://localhost:3001/api/verify/<docId>
+```
+
+### Check MongoDB Data
+
+```bash
+mongosh
+
+# Inside the shell:
+show databases
+use edu-ledger
+
+# View users
+db.users.find().pretty()
+
+# View documents
+db.documents.find().pretty()
+```
+
+---
+
+## ☢️ Part 8: Full Reset (Nuclear Option)
+
+If the chain gets out of sync or you want to restart the demo completely, run this sequence:
+
+### 1\. Drop Blockchain Data
+
+```powershell
+cd blockchain
+Remove-Item -Recurse -Force .data-* -ErrorAction SilentlyContinue
+```
+
+### 2\. Drop MongoDB Database
+
+```bash
+mongosh
+# In mongosh:
+use edu-ledger
+db.dropDatabase()
+exit
+```
+
+### 3\. Restart Services
+
+1.  **Blockchain:** `node src/server/index.js`
+2.  **API Server:** `node src/server.js` (Then run `npm run seed` to recreate users)
+3.  **Client:** `npm run dev`
+
+---
+
+## 📂 Key Files to Know
+
+| File                             | Purpose                                    |
+| :------------------------------- | :----------------------------------------- |
+| `blockchain/src/server/index.js` | Blockchain node entry point                |
+| `blockchain/src/blockchain.js`   | Core blockchain logic (POW/POA, Blocks)    |
+| `blockchain/src/db.js`           | LevelDB persistence layer                  |
+| `api-server/src/server.js`       | API Server entry point                     |
+| `api-server/src/seed.js`         | Script to create test users                |
+| `client/src/apiClient.js`        | Frontend Axios setup for API communication |
+
+```
+
+### Next Step
+Would you like me to generate a `seed.js` script or a `package.json` file to ensure all the dependencies mentioned in the guide (like `level`, `express`, `mongoose`) are correctly defined for your project?
+```

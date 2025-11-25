@@ -21,8 +21,9 @@ export async function getMyDocs(req, res) {
   const merged = docs.map((d) => ({
     docId: d.docId,
     metadata: d.metadata,
-    hash: chainState[d.docId]?.hash,
-    revoked: chainState[d.docId]?.revoked || false
+    // Prefer on-chain hash, fall back to stored file hash or stored tx hash
+    hash: (chainState[d.docId] && chainState[d.docId].hash) || d.hash || d.metadata?.txHash,
+    revoked: (chainState[d.docId] && chainState[d.docId].revoked) || false
   }));
 
   res.json({ ok: true, docs: merged });
@@ -36,13 +37,13 @@ export async function getSingleDoc(req, res) {
 
   const chainState = await blockchainService.getState();
   const chainEntry = chainState[docId];
-
   res.json({
     ok: true,
     docId,
     metadata: doc.metadata,
-    hash: chainEntry?.hash,
-    revoked: chainEntry?.revoked,
+    // Use on-chain value when available; otherwise fall back to stored values
+    hash: (chainEntry && chainEntry.hash) || doc.hash || doc.metadata?.txHash,
+    revoked: (chainEntry && chainEntry.revoked) || false,
     issuer: doc.issuer,
     owner: doc.owner
   });
