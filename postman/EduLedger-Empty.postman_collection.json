@@ -1,0 +1,158 @@
+{
+  "info": {
+    "name": "EduLedger API Collection",
+    "_postman_id": "educhain-collection-001",
+    "description": "Full workflow for backend + blockchain testing",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "AUTH",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{API}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"user@example.com\",\n  \"password\": \"user123\",\n  \"role\": \"user\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{API}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"user123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Issuer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{API}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"issuer@example.com\",\n  \"password\": \"issuer123\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ISSUER",
+      "item": [
+        {
+          "name": "Upload + Issue Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{TOKEN_ISSUER}}" }
+            ],
+            "url": "{{API}}/issuer/upload",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file" },
+                { "key": "ownerId", "value": "{{USER_ID}}", "type": "text" },
+                {
+                  "key": "metadata",
+                  "value": "{\"title\":\"Degree Certificate\",\"year\":2025}",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BLOCKCHAIN",
+      "item": [
+        {
+          "name": "Propose Block",
+          "request": {
+            "method": "POST",
+            "url": "{{BLOCKCHAIN}}/blocks/propose"
+          }
+        },
+        {
+          "name": "Check State",
+          "request": {
+            "method": "GET",
+            "url": "{{BLOCKCHAIN}}/state"
+          }
+        },
+        {
+          "name": "Verify Document",
+          "request": {
+            "method": "GET",
+            "url": "{{BLOCKCHAIN}}/verify/{{DOC_ID}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "USER",
+      "item": [
+        {
+          "name": "Share Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{TOKEN_USER}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API}}/user/share",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"docId\": \"{{DOC_ID}}\",\n  \"targetPubKey\": \"{{OTHER_USER_PUBKEY}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Revoke Access",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{TOKEN_USER}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{API}}/user/revoke",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"docId\": \"{{DOC_ID}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Download Document",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{TOKEN_USER}}" }
+            ],
+            "url": "{{API}}/user/download/{{DOC_ID}}"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "API", "value": "http://localhost:5000/api" },
+    { "key": "BLOCKCHAIN", "value": "http://localhost:3001/api" },
+    { "key": "TOKEN_ISSUER", "value": "" },
+    { "key": "TOKEN_USER", "value": "" },
+    { "key": "USER_ID", "value": "" },
+    { "key": "DOC_ID", "value": "" },
+    { "key": "OTHER_USER_PUBKEY", "value": "" }
+  ]
+}

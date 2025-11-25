@@ -1,0 +1,164 @@
+{
+  "info": {
+    "name": "EduLedger FULL TEST FLOW (Filled Version)",
+    "_postman_id": "educhain-test-collection-002",
+    "description": "Auto-filled flow for backend + blockchain. Run from top to bottom.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "exec": [], "type": "text/javascript" }
+    },
+    {
+      "listen": "test",
+      "script": { "exec": [], "type": "text/javascript" }
+    }
+  ],
+  "item": [
+    {
+      "name": "0️⃣ – Check Health",
+      "request": {
+        "method": "GET",
+        "url": "{{API}}/auth/login"
+      }
+    },
+    {
+      "name": "1️⃣ – Login Issuer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let res = pm.response.json();",
+              "pm.environment.set(\"TOKEN_ISSUER\", res.token);",
+              "pm.environment.set(\"ISSUER_PUBKEY\", res.user.blockchainPublicKey);",
+              "pm.environment.set(\"ISSUER_ID\", res.user.id);",
+              "console.log(\"✅ Issuer token saved\");"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{API}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"issuer@example.com\",\n  \"password\": \"issuer123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2️⃣ – Login User",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let res = pm.response.json();",
+              "pm.environment.set(\"TOKEN_USER\", res.token);",
+              "pm.environment.set(\"USER_PUBKEY\", res.user.blockchainPublicKey);",
+              "pm.environment.set(\"USER_ID\", res.user.id);",
+              "console.log(\"✅ User token saved\");"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{API}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"user123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3️⃣ – Upload Document (Issuer → User)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let res = pm.response.json();",
+              "pm.environment.set(\"DOC_ID\", res.docId);",
+              "console.log(\"✅ DOC_ID set →\", res.docId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{TOKEN_ISSUER}}" }
+        ],
+        "url": "{{API}}/issuer/upload",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "file", "type": "file", "src": "sample.pdf" },
+            { "key": "ownerId", "value": "{{USER_ID}}", "type": "text" },
+            {
+              "key": "metadata",
+              "value": "{\"title\":\"Test Cert\",\"year\":2025}",
+              "type": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4️⃣ – Seal Block (PoA)",
+      "request": {
+        "method": "POST",
+        "url": "{{BLOCKCHAIN}}/blocks/propose"
+      }
+    },
+    {
+      "name": "5️⃣ – Verify Document on Chain",
+      "request": {
+        "method": "GET",
+        "url": "{{BLOCKCHAIN}}/verify/{{DOC_ID}}"
+      }
+    },
+    {
+      "name": "6️⃣ – Share Document (User → Another PubKey)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{TOKEN_USER}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{API}}/user/share",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"docId\": \"{{DOC_ID}}\",\n  \"targetPubKey\": \"{{ISSUER_PUBKEY}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "7️⃣ – Download Document (User)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{TOKEN_USER}}" }],
+        "url": "{{API}}/user/download/{{DOC_ID}}"
+      }
+    }
+  ],
+  "variable": [
+    { "key": "API", "value": "http://localhost:5000/api" },
+    { "key": "BLOCKCHAIN", "value": "http://localhost:3001/api" },
+    { "key": "TOKEN_ISSUER", "value": "" },
+    { "key": "TOKEN_USER", "value": "" },
+    { "key": "ISSUER_PUBKEY", "value": "" },
+    { "key": "USER_PUBKEY", "value": "" },
+    { "key": "ISSUER_ID", "value": "" },
+    { "key": "USER_ID", "value": "" },
+    { "key": "DOC_ID", "value": "" }
+  ]
+}
