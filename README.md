@@ -88,6 +88,13 @@ cd client
 npm run dev
 ```
 
+Sharing UI improvement
+
+- The `View Document` page now provides a recipient dropdown so you can select an existing user (name + email) instead of pasting public keys manually. The frontend fetches `/api/user/list` to populate the dropdown with users and their `blockchainPublicKey` (the API returns only public info: `name`, `email`, `role`, `blockchainPublicKey`).
+- If you prefer to paste a key, choose "Enter public key manually..." from the dropdown and paste the PEM or raw base64 SPKI body — the API will normalize the key.
+
+This reduces paste/format related errors when sharing documents.
+
 Important environment variables (common)
 
 - `blockchain/.env` — `PORT`, `P2P_PORT`, `DB_PATH`, `VALIDATOR_PRIV`, `VALIDATOR_PUB`, `NODE_NAME`, `PEERS`

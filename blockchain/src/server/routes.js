@@ -43,6 +43,32 @@ export function buildRouter({ chain, p2p, validator }) {
       chain.addTransaction(tx);
       p2p.broadcastTx(tx);
 
+      // Dev helper: auto-propose blocks immediately for quicker local testing.
+      // Enable by setting AUTO_PROPOSE=true in the env. This is a dev-only convenience.
+      try {
+        const auto = process.env.AUTO_PROPOSE === 'true' || process.env.NODE_ENV === 'development';
+        if (auto) {
+          // Prepare validator private key (normalize if stored without PEM headers)
+          let privKey = validator.priv;
+          if (typeof privKey === 'string' && !privKey.includes('BEGIN PRIVATE KEY')) {
+            privKey = `-----BEGIN PRIVATE KEY-----\n${privKey}\n-----END PRIVATE KEY-----`;
+          }
+          // Attempt to propose the block asynchronously (do not block the response)
+          (async () => {
+            try {
+              console.log('AUTO_PROPOSE enabled — proposing block automatically');
+              const block = await chain.proposeBlock(privKey);
+              p2p.broadcastNewBlock();
+              console.log('Auto-proposed block', block.index);
+            } catch (apErr) {
+              console.warn('Auto-propose failed:', apErr.message);
+            }
+          })();
+        }
+      } catch (e) {
+        console.warn('Auto-propose helper encountered an error:', e.message);
+      }
+
       res.json({ ok: true, tx: tx.hash });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });

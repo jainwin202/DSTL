@@ -14,7 +14,7 @@ export async function getOwnedDocs(req, res) {
 
   const docs = await Document.find(query);
 
-  const chainState = await blockchainService.getState();
+  const chainState = await blockchainService.getAugmentedState ? await blockchainService.getAugmentedState() : await blockchainService.getState();
   const merged = docs.map((d) => ({
     docId: d.docId,
     metadata: d.metadata,
@@ -27,34 +27,53 @@ export async function getOwnedDocs(req, res) {
 
 /**
  * Gets documents that have been shared with the user.
+ * PRIMARY SOURCE: Document.shares array (local database)
+ * FALLBACK: Blockchain augmented state (for historical compatibility)
  */
 export async function getSharedDocs(req, res) {
   const userPubKey = req.user.blockchainPublicKey;
 
-  const chainState = await blockchainService.getState();
+  console.log(`[getSharedDocs] Looking for docs shared to user pubkey (first 50 chars): ${userPubKey ? userPubKey.slice(0, 50) : 'NONE'}...`);
 
-  const sharedDocIds = Object.keys(chainState).filter(docId => {
-    const entry = chainState[docId];
-    return entry.shares && entry.shares.includes(userPubKey);
+  // PRIMARY SOURCE: Query MongoDB for documents where user's pubkey is in the shares array
+  // Normalize both the query and stored values to handle whitespace variations
+  const docs = await Document.find({ 
+    status: 'active',
+    shares: { $exists: true, $ne: [] }
   });
 
-  if (sharedDocIds.length === 0) {
-    return res.json({ ok: true, docs: [] });
+  // Filter to documents where the user's pubkey is in the shares array
+  const sharedDocs = docs.filter(doc => {
+    if (!doc.shares || doc.shares.length === 0) return false;
+    const found = doc.shares.some(shareKey => {
+      const normalizedShare = (shareKey || '').trim();
+      const normalizedUser = (userPubKey || '').trim();
+      return normalizedShare === normalizedUser;
+    });
+    if (found) {
+      console.log(`[getSharedDocs] Found shared doc ${doc.docId}`);
+    }
+    return found;
+  });
+
+  console.log(`[getSharedDocs] Found ${sharedDocs.length} docs from Database shares array`);
+
+  // Also check blockchain augmented state as fallback/additional source
+  let chainState = {};
+  try {
+    chainState = await blockchainService.getAugmentedState ? await blockchainService.getAugmentedState() : await blockchainService.getState();
+  } catch (e) {
+    console.warn(`[getSharedDocs] Could not fetch blockchain state: ${e.message}`);
   }
 
-  // Find only active documents that have been shared
-  const docs = await Document.find({ 
-    docId: { $in: sharedDocIds },
-    status: 'active' 
-  });
-
-  const merged = docs.map((d) => {
+  // Build result with merged data
+  const merged = sharedDocs.map((d) => {
     const chainEntry = chainState[d.docId];
     return {
       docId: d.docId,
       metadata: d.metadata,
       hash: chainEntry?.hash || d.hash,
-      revoked: chainEntry?.revoked || false
+      revoked: chainEntry?.revoked || (d.status === 'revoked')
     };
   });
 

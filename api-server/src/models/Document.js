@@ -9,6 +9,9 @@ const docSchema = new mongoose.Schema({
   // CRITICAL FIX: Changed 'filename' to 'filePath' to match what is being saved
   // in the issuer.controller.js. This ensures the file path is correctly stored.
   filePath: String,
+  // Track which users this document has been shared with (by their blockchain public key)
+  // This allows visibility without relying entirely on blockchain state which may be empty
+  shares: [{ type: String }], // array of user blockchainPublicKeys
   createdAt: { type: Date, default: Date.now }
 });
 

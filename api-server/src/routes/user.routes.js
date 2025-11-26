@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getOwnedDocs, getSharedDocs, getSingleDoc } from "../controllers/user.controller.js";
-import { shareDoc, revokeDoc, downloadDoc } from "../controllers/user.actions.js";
+import { shareDoc, revokeDoc, downloadDoc, listUsers } from "../controllers/user.actions.js";
 
 const router = Router();
 
@@ -9,6 +9,7 @@ router.get("/owned-docs", getOwnedDocs);
 router.get("/shared-docs", getSharedDocs);
 router.get("/doc/:id", getSingleDoc);
 router.get("/download/:id", downloadDoc);
+router.get("/list", listUsers);
 
 // Document actions
 router.post("/share", shareDoc);

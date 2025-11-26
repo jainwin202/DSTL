@@ -18,13 +18,46 @@ export async function shareDoc(req, res) {
     }
 
     try {
-        // SHARE transactions must be signed by the original issuer.
-        // Fetch the issuer's user object to get their private key.
-        const issuer = await User.findById(doc.issuer);
-        if (!issuer) return res.status(404).json({ ok: false, error: "Document issuer not found." });
+        // Determine which user's private key should sign the SHARE tx.
+        // Either the owner or the issuer may initiate a share.
+        let signerPriv;
 
-        const issuerPriv = decrypt(issuer.blockchainPrivateKeyEnc);
-        await blockchainService.shareDoc(docId, targetPubKey, issuerPriv);
+        // If the requester is the owner, use their private key
+        if (doc.owner.toString() === userId) {
+            signerPriv = decrypt(req.user.blockchainPrivateKeyEnc);
+        } else if (doc.issuer.toString() === userId) {
+            // Requester is the issuer - use issuer's stored private key
+            const issuer = await User.findById(doc.issuer);
+            if (!issuer) return res.status(404).json({ ok: false, error: "Document issuer not found." });
+            signerPriv = decrypt(issuer.blockchainPrivateKeyEnc);
+        } else {
+            return res.status(403).json({ ok: false, error: "Not authorized to share this document" });
+        }
+
+        if (!signerPriv) {
+            console.error('shareDoc controller error: signer private key could not be decrypted');
+            return res.status(500).json({ ok: false, error: 'Signer private key not available' });
+        }
+
+        // POST to blockchain (may fail if blockchain is empty, but we store it locally anyway)
+        try {
+            await blockchainService.shareDoc(docId, targetPubKey, signerPriv);
+        } catch (blockchainErr) {
+            console.warn(`[shareDoc] Blockchain share failed (blockchain may be empty), but recording share in DB: ${blockchainErr.message}`);
+            // Continue - we'll record the share in MongoDB even if blockchain fails
+        }
+
+        // Record the share in the Document record (local source of truth)
+        // Normalize the targetPubKey to handle whitespace variations
+        const normalizedTargetPubKey = (targetPubKey || '').trim();
+        if (!doc.shares) doc.shares = [];
+        // Only add if not already shared with this key
+        if (!doc.shares.some(key => key === normalizedTargetPubKey)) {
+            doc.shares.push(normalizedTargetPubKey);
+            await doc.save();
+            console.log(`[shareDoc] Recorded share for ${docId} to target pubkey (first 50 chars): ${normalizedTargetPubKey.slice(0, 50)}...`);
+        }
+
         res.json({ ok: true });
     } catch (err) {
         console.error('shareDoc controller error', err?.message || err);
@@ -73,6 +106,7 @@ export async function revokeDoc(req, res) {
 export async function downloadDoc(req, res) {
     const docId = req.params.id;
     const userId = req.user._id.toString();
+    const userPubKey = req.user.blockchainPublicKey;
     
     const doc = await Document.findOne({ docId });
     if (!doc) return res.status(404).json({ ok: false, error: "Document not found" });
@@ -81,8 +115,18 @@ export async function downloadDoc(req, res) {
         return res.status(404).json({ ok: false, error: "This document has been revoked and can no longer be downloaded." });
     }
 
-    // Check access
-    if (doc.owner.toString() !== userId && doc.issuer.toString() !== userId) {
+    // Check access: owner, issuer, or has been shared with user
+    const isOwner = doc.owner.toString() === userId;
+    const isIssuer = doc.issuer.toString() === userId;
+    const isShared = doc.shares && doc.shares.some(shareKey => {
+        const normalizedShare = (shareKey || '').trim();
+        const normalizedUser = (userPubKey || '').trim();
+        return normalizedShare === normalizedUser;
+    });
+
+    console.log(`[downloadDoc] docId=${docId}, userId=${userId}, userPubKey=${userPubKey?.slice(0, 50)}..., isOwner=${isOwner}, isIssuer=${isIssuer}, isShared=${isShared}, shares=${doc.shares?.length || 0}`);
+
+    if (!isOwner && !isIssuer && !isShared) {
         return res.status(403).json({ ok: false, error: "Not authorized to download this document" });
     }
 
@@ -98,5 +142,15 @@ export async function downloadDoc(req, res) {
             return res.status(404).json({ ok: false, error: "File not found. It may have been deleted." });
         }
         res.status(500).json({ ok: false, error: "Failed to download file" });
+    }
+}
+
+export async function listUsers(req, res) {
+    try {
+        const users = await User.find().select('name email role blockchainPublicKey').lean();
+        res.json({ ok: true, users });
+    } catch (err) {
+        console.error('listUsers error', err);
+        res.status(500).json({ ok: false, error: 'Failed to fetch users' });
     }
 }

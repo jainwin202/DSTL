@@ -15,6 +15,7 @@ export async function register(req, res) {
 
     // generate blockchain keypair
     const { publicKey, privateKey } = blockchainService.generateKeyPair();
+    const normalizedPublicKey = blockchainService.normalizeKey(publicKey);
     const privEnc = encrypt(privateKey);
 
     const user = await User.create({
@@ -22,7 +23,7 @@ export async function register(req, res) {
       email,
       password: hashed,
       role: role || "user",
-      blockchainPublicKey: publicKey,
+      blockchainPublicKey: normalizedPublicKey,
       blockchainPrivateKeyEnc: privEnc
     });
 

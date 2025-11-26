@@ -15,8 +15,49 @@ export class Blockchain {
   async init() {
     try {
       console.log('Initializing blockchain...');
-      await this.db.db.open();
-      console.log('Database opened successfully');
+
+      // Try opening LevelDB with a few retries to handle transient LOCK errors
+      const maxOpenAttempts = 5;
+      let opened = false;
+      for (let attempt = 1; attempt <= maxOpenAttempts; attempt++) {
+        try {
+          await this.db.db.open();
+          opened = true;
+          console.log('Database opened successfully');
+          break;
+        } catch (openErr) {
+          const locked = openErr && openErr.cause && (openErr.cause.code === 'LEVEL_LOCKED' || openErr.cause.code === 'LEVEL_DATABASE_NOT_OPEN');
+          console.warn(`Attempt ${attempt} to open DB failed: ${openErr.message}`);
+          // If lock detected and user requested forced clear, attempt to remove LOCK file (dev only)
+          if (locked && process.env.FORCE_CLEAR_LOCK === 'true') {
+            try {
+              const fs = await import('fs');
+              const path = this.db.db.location || '.data-node-1';
+              const lockPath = path + '/LOCK';
+              if (fs.existsSync(lockPath)) {
+                console.warn('FORCE_CLEAR_LOCK enabled: removing stale LevelDB LOCK file:', lockPath);
+                fs.unlinkSync(lockPath);
+              }
+            } catch (rmErr) {
+              console.warn('Failed to remove LOCK file automatically:', rmErr.message || rmErr);
+            }
+          }
+
+          if (locked && attempt < maxOpenAttempts) {
+            console.warn('LevelDB appears locked. Retrying after delay...');
+            // wait before retrying
+            await new Promise((r) => setTimeout(r, 500));
+            continue;
+          }
+          // For non-lock or final failure, rethrow with helpful hint
+          const e = new Error(`Failed to open LevelDB after ${attempt} attempts: ${openErr.message}`);
+          e.cause = openErr;
+          throw e;
+        }
+      }
+      if (!opened) {
+        throw new Error('Unable to open LevelDB; it may be locked by another process. Stop other nodes or remove the .data-* LOCK file and retry.');
+      }
       
       const saved = await this.db.loadChain();
       if (saved && saved.length) {
@@ -51,21 +92,23 @@ export class Blockchain {
   }
 
   addTransaction(tx) {
-    // Pass the augmented state to isValid so it can validate all tx types
-    if (!tx.isValid(this.getAugmentedState())) throw new Error("Invalid transaction");
+    if (!tx.isValid(this.getAugmentedState())) {
+        console.error("Invalid transaction was rejected:", JSON.stringify(tx, null, 2));
+        throw new Error("Invalid transaction signature");
+    }
     this.pendingTxs.push(tx);
   }
 
   async proposeBlock(validatorPrivKey) {
-    // CRITICAL FIX: The validator's private key must be passed to signBlock.
     const block = new Block({
       index: this.chain.length,
       prevHash: this.lastBlock().hash,
       transactions: this.pendingTxs,
       validatorPubKey: this.validatorPubKey
-    }).signBlock(validatorPrivKey); // Pass the key here.
+    }).signBlock(validatorPrivKey);
 
-    if (!block.isValid(this.lastBlock().hash, this.allowedValidators)) {
+    // Pass the current state to the block validation logic.
+    if (!block.isValid(this.lastBlock().hash, this.allowedValidators, this.getState())) {
       throw new Error("Block validation failed");
     }
 
@@ -82,7 +125,6 @@ export class Blockchain {
     return true;
   }
 
-  // Rebuild credential ownership state
   getState() {
     const state = {};
 
@@ -95,7 +137,10 @@ export class Blockchain {
         }
         if (type === "SHARE") {
           const { docId, to } = payload;
-          if (state[docId] && !state[docId].revoked) state[docId].shares.push(to);
+          if (state[docId] && !state[docId].revoked) {
+            state[docId].shares.push(to);
+            state[docId].owner = to;
+          }
         }
         if (type === "REVOKE") {
           const { docId } = payload;
@@ -107,32 +152,27 @@ export class Blockchain {
   }
 
   getAugmentedState() {
-    // Start with the confirmed state from the blocks
     const state = this.getState();
 
-    // Now, apply pending transactions on top of that state
     for (const tx of this.pendingTxs) {
         const { type, payload, issuerPubKey } = tx;
         if (type === "ISSUE") {
           const { docId, docHash, ownerPubKey, metadata } = payload;
-          // Add the document to the state if it's not already there from a mined block
           if (!state[docId]) {
             state[docId] = { issuer: issuerPubKey, owner: ownerPubKey, hash: docHash, revoked: false, shares: [], metadata };
           }
         }
         if (type === "SHARE") {
           const { docId, to } = payload;
-          // Add a share if the doc exists and is not revoked
           if (state[docId] && !state[docId].revoked) {
-            // Avoid duplicate shares if the tx is already in a block
             if (!state[docId].shares.includes(to)) {
                 state[docId].shares.push(to);
             }
+            state[docId].owner = to;
           }
         }
         if (type === "REVOKE") {
           const { docId } = payload;
-          // Revoke if the doc exists
           if (state[docId]) {
             state[docId].revoked = true;
           }

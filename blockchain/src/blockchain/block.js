@@ -30,7 +30,7 @@ export class Block {
     return this;
   }
 
-  isValid(prevHash, allowedValidators) {
+  isValid(prevHash, allowedValidators, chainState) {
     if (this.prevHash !== prevHash) return false;
     if (this.computeHash() !== this.hash) return false;
 
@@ -40,7 +40,9 @@ export class Block {
 
     // Validate all tx
     for (const tx of this.transactions) {
-      if (!tx.isValid()) return false;
+      // DEFINITIVE FIX: The chainState MUST be passed to isValid here.
+      // Without it, tx.isValid cannot look up the document owner for SHARE/REVOKE transactions.
+      if (!tx.isValid(chainState)) return false;
     }
     return true;
   }
